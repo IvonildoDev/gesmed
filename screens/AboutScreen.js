@@ -72,6 +72,19 @@ export default function AboutScreen({ navigation }) {
                         <Text style={styles.instructionNumberText}>4</Text>
                     </View>
                     <View style={styles.instructionContent}>
+                        <Text style={styles.instructionTitle}>Próximas Doses</Text>
+                        <Text style={styles.instructionText}>
+                            Na tela de Próximas Doses, você pode visualizar uma lista cronológica de todas
+                            as doses futuras dos seus medicamentos, com datas e horários organizados.
+                        </Text>
+                    </View>
+                </View>
+
+                <View style={styles.instructionItem}>
+                    <View style={styles.instructionNumber}>
+                        <Text style={styles.instructionNumberText}>5</Text>
+                    </View>
+                    <View style={styles.instructionContent}>
                         <Text style={styles.instructionTitle}>Ver Histórico</Text>
                         <Text style={styles.instructionText}>
                             Na tela de Histórico, você pode consultar todas as medicações já tomadas
@@ -82,7 +95,7 @@ export default function AboutScreen({ navigation }) {
 
                 <View style={styles.instructionItem}>
                     <View style={styles.instructionNumber}>
-                        <Text style={styles.instructionNumberText}>5</Text>
+                        <Text style={styles.instructionNumberText}>6</Text>
                     </View>
                     <View style={styles.instructionContent}>
                         <Text style={styles.instructionTitle}>Notificações</Text>
@@ -103,14 +116,24 @@ export default function AboutScreen({ navigation }) {
                     </View>
                     <View style={styles.developerInfo}>
                         <Text style={styles.developerName}>Ivonildo Lima</Text>
-                        <Text style={styles.developerRole}>Desenvolvedor Mobile</Text>
-                        <TouchableOpacity
-                            style={styles.contactButton}
-                            onPress={() => Linking.openURL('mailto:ivonildo.lima@example.com')}
-                        >
-                            <Ionicons name="mail-outline" size={16} color="#fff" />
-                            <Text style={styles.contactButtonText}>Contato</Text>
-                        </TouchableOpacity>
+                        <Text style={styles.developerRole}>Desenvolvedor Web</Text>
+                        <View style={styles.contactButtonsContainer}>
+                            <TouchableOpacity
+                                style={styles.contactButton}
+                                onPress={() => Linking.openURL('mailto:ivonildodev@gmail.com')}
+                            >
+                                <Ionicons name="mail-outline" size={16} color="#fff" />
+                                <Text style={styles.contactButtonText}>Email</Text>
+                            </TouchableOpacity>
+
+                            <TouchableOpacity
+                                style={[styles.contactButton, { backgroundColor: '#6e5494', marginLeft: 8 }]}
+                                onPress={() => Linking.openURL('https://github.com/IvonildoDev')}
+                            >
+                                <Ionicons name="logo-github" size={16} color="#fff" />
+                                <Text style={styles.contactButtonText}>GitHub</Text>
+                            </TouchableOpacity>
+                        </View>
                     </View>
                 </View>
             </View>
@@ -250,6 +273,10 @@ const styles = StyleSheet.create({
         color: 'white',
         marginLeft: 6,
         fontWeight: '500'
+    },
+    contactButtonsContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
     },
     footer: {
         marginTop: 10,

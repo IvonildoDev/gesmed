@@ -10,6 +10,7 @@ export default function MedicationScreen({ route, navigation }) {
     const [nomeMedicamento, setNomeMedicamento] = useState('');
     const [quantidadeMedicamento, setQuantidadeMedicamento] = useState('');
     const [intervaloHoras, setIntervaloHoras] = useState(8); // Padrão: 8 em 8 horas
+    const [totalDoses, setTotalDoses] = useState(''); // Número total de doses (0 para contínuo)
     const [medicamentos, setMedicamentos] = useState([]);
     const [notificacoesAtivas, setNotificacoesAtivas] = useState(true);
 
@@ -17,6 +18,16 @@ export default function MedicationScreen({ route, navigation }) {
         carregarMedicamentos();
         carregarDadosUsuario();
     }, []);
+
+    // Verificar se deve marcar um medicamento como tomado ao entrar na tela
+    useEffect(() => {
+        if (route.params?.marcarTomado && route.params?.medicamentoId) {
+            // Pequeno atraso para garantir que os dados foram carregados
+            setTimeout(() => {
+                marcarComoTomado(route.params.medicamentoId);
+            }, 300);
+        }
+    }, [route.params?.marcarTomado, route.params?.medicamentoId]);
 
     // Efeito para agendar notificações quando medicamentos mudam
     useEffect(() => {
@@ -154,6 +165,9 @@ export default function MedicationScreen({ route, navigation }) {
             proximaDose.setHours(agora.getHours() + intervaloHoras);
 
             try {
+                // Parse the totalDoses input to an integer
+                const totalDosesInt = parseInt(totalDoses) || 0;
+
                 const novoMedicamento = {
                     usuario_id: usuarioId,
                     nome: nomeMedicamento,
@@ -161,7 +175,8 @@ export default function MedicationScreen({ route, navigation }) {
                     intervalo_horas: intervaloHoras,
                     horario_inicial: horarioInicial,
                     horario: agora.getHours() + ':' + agora.getMinutes(), // Para compatibilidade
-                    proxima_dose: proximaDose.toISOString()
+                    proxima_dose: proximaDose.toISOString(),
+                    total_doses: totalDosesInt // 0 means continuous medication
                 };
 
                 // Adicionar o medicamento usando o módulo centralizado
@@ -170,6 +185,7 @@ export default function MedicationScreen({ route, navigation }) {
                 // Após adicionar com sucesso, limpar os campos e recarregar
                 setNomeMedicamento('');
                 setQuantidadeMedicamento('');
+                setTotalDoses('');
                 Alert.alert('Sucesso', 'Medicamento adicionado com sucesso');
 
                 // Recarregar a lista após adicionar
@@ -217,26 +233,57 @@ export default function MedicationScreen({ route, navigation }) {
             // Registrar que o medicamento foi tomado
             database.addHistorico(medicamentoId, agora);
 
-            // Atualizar o medicamento com a próxima dose
+            // Contar o total de doses tomadas para este medicamento
+            const historico = database.getAllSync(
+                "SELECT COUNT(*) as total FROM historico WHERE medicamento_id = ?",
+                [medicamentoId]
+            );
+            const dosesDosesTomadas = historico[0]?.total || 0;
+
+            // Se o medicamento tem um número total de doses definido e já tomou todas
+            const totalDoses = medicamento.total_doses || 0;
+            let mensagem = 'Medicamento marcado como tomado';
+            let proximaDoseData = proximaDose.toISOString();
+
+            if (totalDoses > 0 && dosesDosesTomadas >= totalDoses) {
+                // Tratamento completo - não agendar próxima dose
+                mensagem = `Medicamento marcado como tomado. Você completou todas as ${totalDoses} doses prescritas!`;
+                proximaDoseData = null; // Não haverá próxima dose
+            } else if (totalDoses > 0) {
+                // Ainda há doses para tomar
+                const dosesRestantes = totalDoses - dosesDosesTomadas;
+                if (dosesRestantes <= 0) {
+                    // Esta era a última dose
+                    mensagem = `Medicamento marcado como tomado. Você completou todas as ${totalDoses} doses prescritas!`;
+                    proximaDoseData = null; // Não haverá próxima dose
+                } else {
+                    // Ainda há doses restantes
+                    mensagem = `Medicamento marcado como tomado. Restam ${dosesRestantes} doses.`;
+                }
+            }
+
+            // Atualizar o medicamento com a próxima dose (se houver)
             const medicamentoAtualizado = {
                 ...medicamento,
-                proxima_dose: proximaDose.toISOString(),
-                intervalo_horas: intervaloHoras
+                proxima_dose: proximaDoseData,
+                intervalo_horas: intervaloHoras,
+                total_doses: totalDoses  // Garantir que o total_doses seja mantido
             };
             database.updateMedicamento(medicamentoAtualizado);
 
-            Alert.alert('Sucesso', 'Medicamento marcado como tomado');
+            Alert.alert('Sucesso', mensagem);
 
             // Recarregar após o sucesso com um pequeno atraso para garantir que a transação terminou
             setTimeout(() => {
                 carregarMedicamentos();
 
-                // Reagendar notificação para a próxima dose
-                if (notificacoesAtivas) {
+                // Reagendar notificação para a próxima dose (se houver)
+                if (notificacoesAtivas && proximaDoseData) {
                     const medicamentoAtualizado = {
                         ...medicamento,
-                        proxima_dose: proximaDose.toISOString(),
-                        intervalo_horas: intervaloHoras
+                        proxima_dose: proximaDoseData,
+                        intervalo_horas: intervaloHoras,
+                        total_doses: totalDoses  // Garantir que o total_doses seja mantido
                     };
                     agendarNotificacaoMedicamento(medicamentoAtualizado);
                 }
@@ -382,6 +429,18 @@ export default function MedicationScreen({ route, navigation }) {
                     />
                 </View>
 
+                <View style={styles.inputContainer}>
+                    <Ionicons name="list-outline" size={22} color="#7f8c8d" style={styles.inputIcon} />
+                    <TextInput
+                        style={styles.input}
+                        placeholder="Total de doses (0 para contínuo)"
+                        value={totalDoses}
+                        onChangeText={setTotalDoses}
+                        keyboardType="numeric"
+                        placeholderTextColor="#7f8c8d"
+                    />
+                </View>
+
                 <Text style={styles.label}>Intervalo de Horas:</Text>
                 <View style={styles.intervaloContainer}>
                     <TouchableOpacity
@@ -424,73 +483,7 @@ export default function MedicationScreen({ route, navigation }) {
                 </View>
             </View>
 
-            <View style={styles.listContainer}>
-                <View style={styles.listHeader}>
-                    <Ionicons name="list" size={20} color="#007bff" />
-                    <Text style={styles.listHeaderTitle}>Medicamentos Cadastrados</Text>
-                </View>
-
-                {medicamentos.length === 0 ? (
-                    <View style={styles.emptyState}>
-                        <Ionicons name="medical-outline" size={60} color="#ccc" />
-                        <Text style={styles.emptyStateText}>Nenhum medicamento cadastrado</Text>
-                    </View>
-                ) : (
-                    <FlatList
-                        data={medicamentos}
-                        keyExtractor={(item) => item.id.toString()}
-                        renderItem={({ item }) => (
-                            <View style={[styles.item, estaNaHora(item.proxima_dose) && styles.itemNaHora]}>
-                                <View style={styles.itemContent}>
-                                    <View style={styles.medicationIconContainer}>
-                                        <Ionicons name={estaNaHora(item.proxima_dose) ? "alarm" : "medical"} size={28} color={estaNaHora(item.proxima_dose) ? "#ff9800" : "#007bff"} />
-                                    </View>
-                                    <View style={styles.medicationInfo}>
-                                        <Text style={styles.nomeMedicamento}>{item.nome}</Text>
-                                        <View style={styles.infoRow}>
-                                            <Ionicons name="calculator-outline" size={14} color="#7f8c8d" />
-                                            <Text style={styles.infoText}>Quantidade: {item.quantidade}</Text>
-                                        </View>
-                                        <View style={styles.infoRow}>
-                                            <Ionicons name="time-outline" size={14} color="#7f8c8d" />
-                                            <Text style={styles.infoText}>Intervalo: {formatarIntervalo(item.intervalo_horas)}</Text>
-                                        </View>
-                                        <View style={styles.infoRow}>
-                                            <Ionicons name="calendar-outline" size={14} color="#7f8c8d" />
-                                            <Text style={styles.infoText}>Próxima dose: {formatarHorario(item.proxima_dose)}</Text>
-                                        </View>
-
-                                        {estaNaHora(item.proxima_dose) && (
-                                            <View style={styles.alertRow}>
-                                                <Ionicons name="alert-circle" size={16} color="#ff9800" />
-                                                <Text style={styles.alertaHorario}>HORA DE TOMAR!</Text>
-                                            </View>
-                                        )}
-                                    </View>
-                                </View>
-
-                                <View style={styles.buttonRow}>
-                                    <TouchableOpacity
-                                        style={styles.takenButton}
-                                        onPress={() => marcarComoTomado(item.id)}
-                                    >
-                                        <Ionicons name="checkmark-circle-outline" size={18} color="#fff" />
-                                        <Text style={styles.takenButtonText}>Tomado</Text>
-                                    </TouchableOpacity>
-
-                                    <TouchableOpacity
-                                        style={styles.deleteButton}
-                                        onPress={() => excluirMedicamento(item.id)}
-                                    >
-                                        <Ionicons name="trash-outline" size={18} color="#fff" />
-                                        <Text style={styles.deleteButtonText}>Excluir</Text>
-                                    </TouchableOpacity>
-                                </View>
-                            </View>
-                        )}
-                    />
-                )}
-            </View>
+            {/* O card de medicamentos cadastrados foi removido, pois já existe uma tab dedicada para isso */}
         </View>
     );
 }

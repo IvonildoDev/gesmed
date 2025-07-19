@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, FlatList, Text, StyleSheet, Alert, TouchableOpacity } from 'react-native';
+import { View, FlatList, Text, StyleSheet, Alert, TouchableOpacity, RefreshControl } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import database from '../src/database/database';
 
@@ -9,12 +9,69 @@ export default function HistoryScreen({ route, navigation }) {
     const [medicamentosAgendados, setMedicamentosAgendados] = useState([]);
     const [nomeUsuario, setNomeUsuario] = useState('');
     const [visualizacao, setVisualizacao] = useState('historico'); // 'historico' ou 'agendados'
+    const [medicamentosSummary, setMedicamentosSummary] = useState([]); // Sumário de medicamentos e doses
+    const [refreshing, setRefreshing] = useState(false); // Estado para controle do pull-to-refresh
 
     useEffect(() => {
-        carregarHistorico();
-        carregarMedicamentosAgendados();
-        carregarDadosUsuario();
+        carregarDados();
+
+        // Configurar atualização quando a tela receber foco
+        const unsubscribe = navigation.addListener('focus', () => {
+            carregarDados();
+        });
+
+        return unsubscribe;
     }, []);
+
+    // Função para carregar todos os dados necessários
+    const carregarDados = async () => {
+        setRefreshing(true);
+        try {
+            await carregarDadosUsuario();
+            await carregarHistorico();
+            await carregarMedicamentosAgendados();
+            await carregarSumarioMedicamentos();
+        } catch (error) {
+            console.error("Erro ao carregar dados:", error);
+        } finally {
+            setRefreshing(false);
+        }
+    };
+
+    // Função para carregar o sumário de doses tomadas e restantes para cada medicamento
+    const carregarSumarioMedicamentos = () => {
+        try {
+            // Obter todos os medicamentos do usuário que têm total_doses > 0
+            const medicamentos = database.getAllSync(
+                "SELECT id, nome, total_doses FROM medicamentos WHERE usuario_id = ? AND total_doses > 0",
+                [usuarioId]
+            );
+
+            // Para cada medicamento, contar quantas doses foram tomadas
+            const sumario = medicamentos.map(med => {
+                const historico = database.getAllSync(
+                    "SELECT COUNT(*) as total FROM historico WHERE medicamento_id = ?",
+                    [med.id]
+                );
+                const dosesTomadas = historico[0]?.total || 0;
+                const dosesRestantes = Math.max(0, med.total_doses - dosesTomadas);
+                const progresso = med.total_doses > 0 ? (dosesTomadas / med.total_doses) * 100 : 0;
+
+                return {
+                    id: med.id,
+                    nome: med.nome,
+                    totalDoses: med.total_doses,
+                    dosesTomadas,
+                    dosesRestantes,
+                    progresso: Math.min(100, progresso)
+                };
+            });
+
+            setMedicamentosSummary(sumario);
+        } catch (error) {
+            console.error("Erro ao carregar sumário de medicamentos:", error);
+        }
+    };
 
     const carregarDadosUsuario = () => {
         try {
@@ -32,6 +89,8 @@ export default function HistoryScreen({ route, navigation }) {
             // Usando a função centralizada no database.js
             const resultado = database.getHistoricoByUsuario(usuarioId);
             setHistorico(resultado);
+            // Também atualizar o sumário quando o histórico é carregado
+            carregarSumarioMedicamentos();
         } catch (error) {
             console.error("Erro ao carregar histórico:", error);
             Alert.alert("Erro", "Ocorreu um erro ao carregar o histórico de medicamentos.");
@@ -161,6 +220,28 @@ export default function HistoryScreen({ route, navigation }) {
                 </TouchableOpacity>
             </View>
 
+            {/* Sumário de Medicamentos com Doses */}
+            {medicamentosSummary.length > 0 && (
+                <View style={styles.summaryContainer}>
+                    <View style={styles.summaryHeader}>
+                        <Ionicons name="stats-chart" size={18} color="#007bff" />
+                        <Text style={styles.summaryTitle}>Progresso dos Medicamentos</Text>
+                    </View>
+
+                    {medicamentosSummary.map(med => (
+                        <View key={med.id} style={styles.summaryItem}>
+                            <Text style={styles.summaryMedicamento}>{med.nome}</Text>
+                            <View style={styles.progressContainer}>
+                                <View style={[styles.progressBar, { width: `${med.progresso}%` }]} />
+                            </View>
+                            <Text style={styles.summaryText}>
+                                {med.dosesTomadas}/{med.totalDoses} doses ({med.dosesRestantes} restantes)
+                            </Text>
+                        </View>
+                    ))}
+                </View>
+            )}
+
             {visualizacao === 'historico' ? (
                 historico.length === 0 ? (
                     <View style={styles.emptyState}>
@@ -173,6 +254,13 @@ export default function HistoryScreen({ route, navigation }) {
                         data={historico}
                         keyExtractor={(item, index) => index.toString()}
                         renderItem={renderItemHistorico}
+                        refreshControl={
+                            <RefreshControl
+                                refreshing={refreshing}
+                                onRefresh={carregarDados}
+                                colors={['#007bff']}
+                            />
+                        }
                     />)
             ) : (
                 medicamentosAgendados.length === 0 ? (
@@ -186,6 +274,13 @@ export default function HistoryScreen({ route, navigation }) {
                         data={medicamentosAgendados}
                         keyExtractor={(item, index) => index.toString()}
                         renderItem={renderItemAgendado}
+                        refreshControl={
+                            <RefreshControl
+                                refreshing={refreshing}
+                                onRefresh={carregarDados}
+                                colors={['#007bff']}
+                            />
+                        }
                     />)
             )}
         </View>
@@ -277,6 +372,52 @@ const styles = StyleSheet.create({
         color: '#888',
         marginTop: 8,
         textAlign: 'center'
+    },
+    summaryContainer: {
+        backgroundColor: '#fff',
+        borderRadius: 10,
+        padding: 16,
+        marginBottom: 16,
+        elevation: 1,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.1,
+        shadowRadius: 2
+    },
+    summaryHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 12
+    },
+    summaryTitle: {
+        fontSize: 16,
+        fontWeight: 'bold',
+        color: '#333',
+        marginLeft: 8
+    },
+    summaryItem: {
+        marginBottom: 12
+    },
+    summaryMedicamento: {
+        fontSize: 14,
+        fontWeight: '500',
+        color: '#444',
+        marginBottom: 4
+    },
+    progressContainer: {
+        height: 10,
+        backgroundColor: '#f0f0f0',
+        borderRadius: 5,
+        marginBottom: 4
+    },
+    progressBar: {
+        height: '100%',
+        backgroundColor: '#007bff',
+        borderRadius: 5
+    },
+    summaryText: {
+        fontSize: 12,
+        color: '#666'
     },
     item: {
         backgroundColor: 'white',

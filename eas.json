@@ -1,0 +1,34 @@
+{
+  "cli": {
+    "version": ">= 16.13.2",
+    "appVersionSource": "remote"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal"
+    },
+    "preview": {
+      "distribution": "internal"
+    },
+    "production": {
+      "autoIncrement": true
+    },
+    "apk": {
+      "android": {
+        "buildType": "apk"
+      }
+    },
+    "dose-tracking": {
+      "android": {
+        "buildType": "apk"
+      },
+      "extends": "apk",
+      "distribution": "internal",
+      "releaseChannel": "dose-tracking"
+    }
+  },
+  "submit": {
+    "production": {}
+  }
+}

@@ -94,6 +94,10 @@ class Database {
                 this.db.execSync('ALTER TABLE medicamentos ADD COLUMN proxima_dose TEXT');
             }
 
+            if (!colunas.includes('total_doses')) {
+                this.db.execSync('ALTER TABLE medicamentos ADD COLUMN total_doses INTEGER DEFAULT 0');
+            }
+
             return true;
         } catch (error) {
             console.error('Erro ao verificar/adicionar colunas:', error);
@@ -195,11 +199,11 @@ class Database {
      */
     addMedicamento = (medicamento) => {
         try {
-            const { usuario_id, nome, horario, quantidade, intervalo_horas, proxima_dose } = medicamento;
+            const { usuario_id, nome, horario, quantidade, intervalo_horas, proxima_dose, total_doses } = medicamento;
 
             this.db.runSync(
-                'INSERT INTO medicamentos (usuario_id, nome, horario, quantidade, intervalo_horas, proxima_dose) VALUES (?, ?, ?, ?, ?, ?)',
-                [usuario_id, nome, horario, quantidade, intervalo_horas, proxima_dose]
+                'INSERT INTO medicamentos (usuario_id, nome, horario, quantidade, intervalo_horas, proxima_dose, total_doses) VALUES (?, ?, ?, ?, ?, ?, ?)',
+                [usuario_id, nome, horario, quantidade, intervalo_horas, proxima_dose, total_doses || 0]
             );
 
             // Obter o ID do último medicamento inserido
@@ -218,11 +222,11 @@ class Database {
      */
     updateMedicamento = (medicamento) => {
         try {
-            const { id, nome, horario, quantidade, intervalo_horas, proxima_dose } = medicamento;
+            const { id, nome, horario, quantidade, intervalo_horas, proxima_dose, total_doses } = medicamento;
 
             this.db.runSync(
-                'UPDATE medicamentos SET nome = ?, horario = ?, quantidade = ?, intervalo_horas = ?, proxima_dose = ? WHERE id = ?',
-                [nome, horario, quantidade, intervalo_horas, proxima_dose, id]
+                'UPDATE medicamentos SET nome = ?, horario = ?, quantidade = ?, intervalo_horas = ?, proxima_dose = ?, total_doses = ? WHERE id = ?',
+                [nome, horario, quantidade, intervalo_horas, proxima_dose, total_doses || 0, id]
             );
 
             return true;
@@ -259,10 +263,18 @@ class Database {
      */
     getMedicamentosByUsuario = (usuarioId) => {
         try {
-            return this.db.getAllSync(
+            console.log("Buscando medicamentos para usuário:", usuarioId);
+            const result = this.db.getAllSync(
                 'SELECT * FROM medicamentos WHERE usuario_id = ? ORDER BY proxima_dose ASC',
                 [usuarioId]
             );
+
+            // Verificar se o campo total_doses está sendo retornado corretamente
+            if (result && result.length > 0) {
+                console.log("Primeiro medicamento encontrado:", JSON.stringify(result[0]));
+            }
+
+            return result;
         } catch (error) {
             console.error('Erro ao buscar medicamentos:', error);
             throw error;
@@ -348,6 +360,24 @@ class Database {
             return this.db.getAllSync(sql, params);
         } catch (error) {
             console.error(`Erro ao executar query: ${sql}`, error);
+            throw error;
+        }
+    };
+
+    /**
+     * Método getAllSync para ser chamado diretamente no objeto database
+     * Este método serve como ponte para this.db.getAllSync
+     */
+    getAllSync = (sql, params = []) => {
+        if (!this.db) {
+            console.error('Banco de dados não inicializado. Chamando initDatabase...');
+            this.initDatabase();
+        }
+
+        try {
+            return this.db.getAllSync(sql, params);
+        } catch (error) {
+            console.error(`Erro ao executar getAllSync: ${sql}`, error);
             throw error;
         }
     };
